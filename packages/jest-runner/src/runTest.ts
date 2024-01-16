@@ -6,6 +6,8 @@
  *
  */
 
+// eslint-disable-next-line import/no-extraneous-dependencies
+import {parse} from 'acorn';
 import chalk = require('chalk');
 import * as fs from 'graceful-fs';
 import sourcemapSupport = require('source-map-support');
@@ -66,6 +68,32 @@ function freezeConsole(
   };
 }
 
+function countTests(testCode: string) {
+  const ast = parse(testCode, {ecmaVersion: 2020});
+  let testCount = 0;
+
+  function visitNode(node: any) {
+    if (
+      node.type === 'CallExpression' &&
+      (node.callee.name === 'test' || node.callee.name === 'it')
+    ) {
+      testCount++;
+    }
+
+    for (const key in node) {
+      if (node[key] && typeof node[key] === 'object') {
+        visitNode(node[key]);
+      }
+    }
+  }
+
+  for (const node of ast.body) {
+    visitNode(node);
+  }
+
+  return testCount;
+}
+
 // Keeping the core of "runTest" as a separate function (as "runTestInternal")
 // is key to be able to detect memory leaks. Since all variables are local to
 // the function, when "runTestInternal" finishes its execution, they can all be
@@ -86,6 +114,9 @@ async function runTestInternal(
   const testSource = fs.readFileSync(path, 'utf8');
   const docblockPragmas = docblock.parse(docblock.extract(testSource));
   const customEnvironment = docblockPragmas['jest-environment'];
+
+  const numberOfTests = countTests(testSource);
+  console.log('Number of tests', numberOfTests);
 
   const loadTestEnvironmentStart = Date.now();
   let testEnvironment = projectConfig.testEnvironment;
